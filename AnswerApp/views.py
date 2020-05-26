@@ -163,7 +163,6 @@ def delete_answer(request, answer_id):
 
 
 def show_comment(request, answer_id):
-    # answer_id = request.GET.get('answer_id')
     answer = AnswerModel.objects.get(id=answer_id)
     comment_list = Comment.objects.filter(answer=answer_id)
     return render(request, 'question/show_comment.html',
