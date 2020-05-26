@@ -1,3 +1,5 @@
+# Register your models here.
+
 from django.contrib import admin
 from .models import Question
 
@@ -8,4 +10,4 @@ class QuestionAdmin(admin.ModelAdmin):
                     'created', 'publishDate')
     list_filter = ['id', 'user', 'questionTitle', 'questionCategory', 'questionDescription',
                    'created', 'publishDate']
-# Register your models here.
+
