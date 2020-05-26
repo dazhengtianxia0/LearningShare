@@ -1,165 +1,304 @@
+# Create your views here.
+
 from django.shortcuts import render, get_object_or_404
-from QuestionApp.models import Question
-from .forms import *
-from django.contrib.auth.models import User
-from django.http import HttpResponse
+from django.http import HttpResponseRedirect ,HttpResponse
+from django.views.decorators.csrf import csrf_exempt
 from django.urls import reverse
-from django.http import HttpResponseRedirect
 from django.contrib.auth.decorators import login_required
-from notifications.signals import notify
+from .forms import AskForm
+from .models import *
+from AnswerApp.models import AnswerModel
+import easygui
 
-@login_required(login_url='/account/login/')
-def answer(request, question_id):
-    """
-    先检测用户是否登录，问题是否存在
-    根据请求类型，显示答案，或者编写答案
-    """
-    user = User.objects.get(id=request.user.id)
-    print(user.collect_answer.all())
-    question = get_object_or_404(Question, id=question_id)
-    if request.method == 'GET':
-        # 找到该问题的所有答案,并按照时间顺序排序
-        answer_form = AnswerForm()
-        return render(request, "question/answer.html",
-                      {'answer_form': answer_form, 'question': question})
-        # 显示答案撰写页面
+
+global keyword
+global question_list
+global answer_list
+global user_list
+keyword = ''
+
+def index(request):
+    category_id = request.GET.get('category_id')
+
+    if len(request.GET) == 0:
+        question_1 = Question.objects.all().order_by('-grade', 'created', 'questionTitle')
+        question_2 = Question.objects.all().order_by('-views', 'created', 'questionTitle')[:10]
     else:
-        author = User.objects.get(id=request.user.id)
-        answer_form = AnswerForm(request.POST)
-        if answer_form.is_valid():
-            answer_text = request.POST.get('editormd-markdown-doc')
-            answer_data = AnswerModel(
-                author=author,
-                question=question,
-                answer_text=answer_text,
-            )
-            answer_data.save()
-            answers = AnswerModel.objects.filter(question=question).order_by("pub_date")
-            return HttpResponseRedirect(reverse('question:question_content', args=(question.id,)))
+        question_1 = Question.objects.filter(questionCategory_id=category_id).order_by('-grade', 'created', 'questionTitle')
+        question_2 = Question.objects.filter(questionCategory_id=category_id).order_by('-views', 'created',
+                                                                                       'questionTitle')
+    categorys = Category.objects.all()
+    context = {
+        "question_1": question_1,
+        "question_2": question_2,
+        "categorys": categorys
+    }
+
+    return render(request, "index.html", context=context)
+
+
+def question_content(request, question_id):
+    question = Question.objects.get(id=question_id)
+    question.views=question.views+1
+    question.save()
+    answer_list = AnswerModel.objects.filter(question_id=question_id)
+    questions = Question.objects.all()
+    context = {
+        "question": question,
+        "answer_list": answer_list,
+        "questions": questions
+    }
+    
+    return render(request, "question/content.html", context=context)
+
+
+@login_required(login_url='/account/login')
+def ask(request):
+    if request.user.is_authenticated:
+        username = request.user.username
+        is_logged_in = True
+    else:
+        username = '未登录'
+        is_logged_in = False
+    context = {
+        'username': username,
+        'is_logged_in': is_logged_in,
+    }
+    if request.method == 'POST':
+        id = request.user.id
+        user = User.objects.get(id=id)
+        if user:
+            pass
         else:
-            return HttpResponse("error")
+            return HttpResponse("1")
+
+        form = AskForm(request.POST)
+        if form.is_valid():
+            question_category_number = request.POST.get('category')
+            question_title = request.POST.get('title')
+            question_text = request.POST.get('editormd-markdown-doc')
+            question_category = Category.objects.get(number=question_category_number)
+            question = Question(
+                user=user,
+                questionTitle=question_title,
+                questionCategory=question_category,
+                questionDescription=question_text,
+            )
+            question.save()
 
 
-def answer_change(request, answer_id):
-    change_answer = AnswerModel.objects.get(id=answer_id)
-    question = Question.objects.get(id=change_answer.question.id)
-    if request.user.id != change_answer.author.id:
-        return HttpResponse("对不起，您没有权限")
-    else:
-        if request.method == 'GET':
-            return render(request, "question/change-answer.html",
-                          {"change_answer": change_answer, "question": question})  # 需要编写修改答案模板
+            return HttpResponse("添加成功")
         else:
-            answer_form = AnswerForm(request.POST)
-            if answer_form.is_valid():
-                change_answer.answer_text = request.POST.get('editormd-markdown-doc')
-                change_answer.save()
-                return HttpResponseRedirect(reverse('question:question_content', args=(change_answer.question.id,)))
+            context['askMessage'] = "您的输入含有非法字符, 请重试!"
+            form = AskForm()
 
-
-@login_required(login_url='/account/login/')
-def like(request, answer_id):
-    print(answer_id)
-    like_answer = AnswerModel.objects.get(id=answer_id)
-    if request.user in like_answer.user_like_answer.all():
-        return HttpResponse("您已赞过")
+            return HttpResponse("问题添加失败")
     else:
-        like_answer.user_like_answer.add(request.user)
-        like_answer.grade += 10
-        like_answer.goodNum += 1
-        if request.user != like_answer.author:
-            notify.send(
-                request.user,
-                recipient=like_answer.author,
-                verb='赞了你的回答',
-                target=like_answer,
-            )
-        like_answer.save()
-        return HttpResponseRedirect(reverse('question:question_content', args=(like_answer.question.id,)))
+            form = AskForm()
+            category = Category.objects.all()
+            questions = Question.objects.all()
+            return render(request, 'question/add_question.html', {"category": category, "form": form, "questions": questions})
 
 
-@login_required(login_url='/account/login/')
-def unlike(request, answer_id):
-    unlike_answer = AnswerModel.objects.get(id=answer_id)
-    if request.user in unlike_answer.user_unlike_answer.all():
-        return HttpResponse("您已踩过")
+@csrf_exempt
+@login_required(login_url='/account/login')
+def like_question(request,id,action):
+
+    if id and action:
+        try:
+
+            question = Question.objects.get(id=id)
+
+            if action == "like":
+                if request.user not in question.users_like.all():
+                    question.users_like.add(request.user)
+                    if request.user_ in question.users_unlike.all():
+                        question.users_unlike.remove(request.user)
+                        question.badNum = question.badNum - 1
+                        question.grade = question.grade - 10
+
+                    question.goodNum = question.goodNum+1
+                    question.grade = question.grade + 10
+                    question.save()
+                    easygui.msgbox(msg='点赞成功', title='提示')
+                    return HttpResponseRedirect(reverse('question:question_content',args=[id]))
+                else:
+                    easygui.msgbox(msg='点赞成功', title='提示')
+                    return HttpResponseRedirect(reverse('question:question_content',args=[id]))
+            else:
+                if request.user not in question.users_unlike.all():
+
+                    question.users_unlike.add(request.user)
+                    if request.user  in question.users_like.all():
+                        question.users_like.remove(request.user)
+                        question.goodNum = question.goodNum-1
+                        question.grade = question.grade-10
+                    question.badNum = question.badNum+1
+                    question.grade = question.grade -10
+                    question.save()
+                    easygui.msgbox(u'踩成功', u'提示')
+                    return HttpResponseRedirect(reverse('question:question_content',args=[id]))
+                else:
+                    easygui.msgbox(u'您已经反对', u'提示')
+                    return HttpResponseRedirect(reverse('question:question_content',args=[id]))
+        except:
+
+                return HttpResponseRedirect(reverse('question:question_content',args=[id]))
     else:
-        unlike_answer.user_unlike_answer.add(request.user)
-        unlike_answer.badNum += 1
-        unlike_answer.grade -= 7
-        if request.user != unlike_answer.author:
-            notify.send(
-                request.user,
-                recipient=unlike_answer.author,
-                verb='踩了你的回答',
-                target=unlike_answer,
-            )
-        unlike_answer.save()
-        return HttpResponseRedirect(reverse('question:question_content', args=(unlike_answer.question.id,)))
+
+             easygui.msgbox(u'操作失败', u'提示')
+             return HttpResponseRedirect(reverse('question:question_content',args=[id]))
 
 
-@login_required(login_url='/account/login/')
-def collect(request, answer_id):
-    collect_answer = AnswerModel.objects.get(id=answer_id)
-    if request.user in collect_answer.collect.all():
-        return HttpResponse("您已收藏过")
+def like(request, id):
+    question = Question.objects.get(id=id)
+    question.goodNum += 1
+    question.grade = question.grade + 10
+    question.save()
+
+
+def unlike(request, id):
+    question = Question.objects.get(id=id)
+    question.goodNum += 1
+    question.grade = question.grade + 10
+    question.save()
+
+    
+def search(request):
+    global keyword
+    global question_list
+
+    key = request.GET.get('keyword')
+    if key is not None:
+        keyword = key
+    err_msg = ''
+
+    t = request.GET.get('type')
+    type = t
+    # type = ''
+
+    if not keyword:
+        err_msg = '请输入关键词'
+        return render(request, 'question/search.html', {'err_msg': err_msg})
+
+    #按照赞数、时间、名称进行排序
+    q = Question.objects.filter(questionTitle__icontains=keyword).order_by('-goodNum', 'created', 'questionTitle')
+    if q != '':
+        question_list = q
+    #按照发布时间、问题进行排序
+    a = AnswerModel.objects.filter(answer_text__icontains=keyword).order_by('-pub_date', 'question')
+    if a != '':
+        answer_list = a
+    #按照用户名进行排序
+    u = User.objects.filter(username__icontains=keyword).order_by('-username')
+    if u != '':
+        user_list = u
+
+    return render(request, 'question/search.html', {'err_msg': err_msg, 'question_list': question_list,
+                                                    'answer_list': answer_list, 'user_list': user_list,
+                                                    'keyword': keyword, 'type': type})
+
+
+
+def questionContent(request):
+    id = request.GET.get('user')
+    username = User.objects.get(id=id)
+    question_list = Question.objects.filter(user=id)
+    questions = Question.objects.all()
+    return render(request, 'question/show_question.html', {'username':username, 'question_list':question_list, "questions": questions})
+
+@csrf_exempt
+@login_required(login_url='/account/login')
+def collect(request,id,action):
+
+    if id and action:
+        try:
+            question = Question.objects.get(id=id)
+            if action == "收藏":
+                question.collect.add(request.user)
+                question.grade = question.grade+20
+                question.save()
+                easygui.msgbox(u'收藏成功', u'提示')
+                return HttpResponseRedirect(reverse('question:question_content',args=[id]))
+            else:
+                question.collect.remove(request.user)
+                question.grade = question.grade-20
+                question.save()
+                easygui.msgbox(u'取消收藏成功', u'提示')
+                return HttpResponseRedirect(reverse('question:question_content',args=[id]))
+        except:
+            easygui.msgbox(u'no', u'提示')
+            return HttpResponseRedirect(reverse('question:question_content',args=[id]))
     else:
-        collect_answer.collect.add(request.user)
-        collect_answer.save()
-        if request.user != collect_answer.author:
-            notify.send(
-                request.user,
-                recipient=collect_answer.author,
-                verb='收藏了你的回答',
-                target=collect_answer,
-            )
-        return HttpResponseRedirect(reverse('question:question_content', args=(collect_answer.question.id,)))
+        easygui.msgbox(u'操作失败', u'提示')
+        return HttpResponseRedirect(reverse('question:question_content',args=[id]))
 
 
-@login_required(login_url='/account/login/')
-def comment(request, answer_id):
-    """
-    显示评论的方式暂未确定
-    """
-    comment_answer = get_object_or_404(AnswerModel, id=answer_id)
-    if request.method == 'GET':
-        comment_form = CommentForm()
-        return render(request, "question/comment.html",
-                      {"answer": comment_answer, "comment_form": comment_form, "question": comment_answer.question})
+def my_questions(request):
+    username = request.user.username
+    is_logged_in = True
+    context = {
+        'username': username,
+        'is_logged_in': is_logged_in,
+    }
+    questions = request.user.questions.all()
+    answers = request.user.answers.all()
+    context['questions'] = questions
+    context['answers'] = answers
+    return render(request, 'question/my_questions.html', context)
+
+
+@login_required(login_url='/account/login')
+@csrf_exempt
+def redit_question(request,question_id):
+    if request.method == "GET":
+        question = Question.objects.get(id=question_id)
+
+        question_form = AskForm(initial={"title": question.questionTitle, "category": question.questionCategory})
+        return render(request, 'question/redit_question.html', {"question":question, "question_form": question_form})
     else:
-        commenter = User.objects.get(id=request.user.id)
-        comment_form = CommentForm(request.POST)
-        if comment_form.is_valid():
-            comment_text = comment_form.cleaned_data['comment_text']
-            comment_data = Comment(
-                commenter=commenter,
-                answer=comment_answer,
-                comment_text=comment_text
-            )
-            if request.user != comment_answer.author:
-                notify.send(
-                    request.user,
-                    recipient=comment_answer.author,
-                    verb='回复了你',
-                    target=comment_answer,
-                    action_object=comment_data,
-                )
-            comment_data.save()
-            comments = Comment.objects.filter(answer=comment_answer)
-            return HttpResponseRedirect(reverse('question:question_content', args=(comment_answer.question.id,)))
+        redit_question = Question.objects.get(id=question_id)
+        try:
+            redit_question.questionTitle = request.POST['title']
+            redit_question.questionDescription = request.POST['editormd-markdown-doc']
+            redit_question.save()
+            return HttpResponse("修改成功")
+
+        except:
+            print(request)
+            return HttpResponse("修改失败")
 
 
-def delete_answer(request, answer_id):
-    answer_delete = AnswerModel.objects.get(id=answer_id)
-    if request.user.id != answer_delete.author.id:
-        return HttpResponse("对不起，您没有权限")
-    else:
-        answer_delete.delete()
-    return HttpResponseRedirect(reverse('question:question_content', args=(answer_delete.question.id,)))
+def my_collections(request):
+    pass
+
+def delete_question(request, question_id):
+    question_delete = Question.objects.get(id=question_id)
+    question_delete.delete()
+    return HttpResponseRedirect(reverse('question:my_questions', ))
+
+def my_center(request):
+    username = request.user.username
+    is_logged_in = True
+    context = {
+        'username': username,
+        'is_logged_in': is_logged_in,
+    }
+    questions = request.user.questions.all()
+
+    context['questions'] = questions
+    return render(request,'question/my_center.html',context=context)
 
 
-def show_comment(request, answer_id):
-    answer = AnswerModel.objects.get(id=answer_id)
-    comment_list = Comment.objects.filter(answer=answer_id)
-    return render(request, 'question/show_comment.html',
-                  {"comment_list": comment_list, "answer_id": answer_id, "answer": answer})
+def my_answers(request):
+    username = request.user.username
+    is_logged_in = True
+    context = {
+        'username': username,
+        'is_logged_in': is_logged_in,
+    }
+    answers = request.user.answers.all()
+    context['answers'] = answers
+    return render(request, 'question/my_answers.html', context=context)
+
+   
