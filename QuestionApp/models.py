@@ -1,11 +1,11 @@
-# -*- coding: utf-8 -*-
+# Create your models here.
 
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.db import models
 from CategoryApp.models import Category
 
-# Create your models here.
+
 
 
 class Question(models.Model):
