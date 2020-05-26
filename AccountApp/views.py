@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
-from django.contrib.auth import authenticate, login  # 1从 Django 默认的（或者说是内置的）用户认证和管理应用中引入的两个方法。
+from django.contrib.auth import authenticate, login  
 from .forms import LoginForm, RegistrationForm
 from django.contrib.auth.decorators import login_required
 from .models import UserProfile, UserInfo
@@ -96,8 +96,7 @@ def myself_edit(request):
                       {"user_form": user_form, "userprofile_form": userprofile_form, "userinfo_form": userinfo_form})
 
 
-# def my_image(request):
-#    return render(request, "account/imagecrop.html",)
+
 # 改为可由前端传入图片
 @login_required(login_url='/account/login/')
 def my_image(request):
