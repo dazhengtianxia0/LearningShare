@@ -1,3 +1,6 @@
+# Register your models here.
+
+
 from django.contrib import admin
 from .models import AnswerModel
 
@@ -6,5 +9,3 @@ from .models import AnswerModel
 class AnswerAdmin(admin.ModelAdmin):
     list_display = ('id', 'author', 'question', 'pub_date')
     list_filter = ['id', 'author', 'question', 'pub_date']
-
-# Register your models here.
