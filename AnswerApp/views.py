@@ -4,7 +4,6 @@ from QuestionApp.models import Question
 from .forms import *
 from django.contrib.auth.models import User
 from django.http import HttpResponse
-# 该重定向后面只能加硬编码url，不能使用直接命名的url，后面需要用reverse来转换
 from django.urls import reverse
 from django.http import HttpResponseRedirect
 from django.contrib.auth.decorators import login_required
@@ -21,8 +20,6 @@ def answer(request, question_id):
     print(user.collect_answer.all())
     question = get_object_or_404(Question, id=question_id)
     if request.method == 'GET':
-        # print(request.GET)
-        # answers = AnswerModel.objects.filter(question=question)
         # 找到该问题的所有答案,并按照时间顺序排序
         answer_form = AnswerForm()
         return render(request, "question/answer.html",
@@ -61,14 +58,6 @@ def answer_change(request, answer_id):
                 change_answer.save()
                 return HttpResponseRedirect(reverse('question:question_content', args=(change_answer.question.id,)))
 
-            # @login_required(login_url='/account/login/')
-
-
-# def answer_list(request):
-#     print('1')
-#     answers = AnswerModel.objects.filter(question=request.question)
-#     question = Question.objects.filter(id=request.question.id)
-#     return render(request, "question/answer.html", {"answers": answers, "question": question})
 
 
 @login_required(login_url='/account/login/')
